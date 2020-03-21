@@ -1,35 +1,35 @@
 use std::collections::{HashSet, HashMap, VecDeque};
-use uuid::Uuid;
-
-pub use grin_util::secp::{Message};
-use common::crypto::{Hex, SecretKey};
-use grin_core::core::hash::{Hash};
-use grin_core::ser;
-use grin_util::secp::pedersen;
-use grin_util::secp::{ContextFlag, Secp256k1, Signature};
-use grin_p2p::types::PeerInfoDisplay;
-
-use crate::contacts::GrinboxAddress;
-
-//use super::keys;
-use super::types::TxProof;
-use grin_wallet_libwallet::{AcctPathMapping, BlockFees, CbData, NodeClient, Slate, TxLogEntry, TxWrapper,
-                            WalletInfo, OutputCommitMapping, WalletInst, WalletLCProvider,
-                            StatusMessage, TxLogEntryType, OutputData};
-use grin_core::core::Transaction;
-use grin_keychain::{Identifier, Keychain};
-use grin_util::secp::key::{ PublicKey };
-use crate::common::{Arc, Mutex, Error, ErrorKind};
-
-use grin_keychain::{SwitchCommitmentType, ExtKeychainPath};
-use grin_wallet_libwallet::internal::{updater,keys};
 use std::sync::mpsc;
-use crate::common::hasher;
+use uuid::Uuid;
 use std::sync::mpsc::Sender;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread::JoinHandle;
 use std::fs::File;
 use std::io::{Write, BufReader, BufRead};
+
+pub use grin_util::secp::{Message};
+use grin_util::secp::key::{ PublicKey };
+use grin_util::secp::{pedersen, ContextFlag, Secp256k1, Signature};
+use grin_core::core::hash::{Hash};
+use grin_core::ser;
+use grin_core::core::Transaction;
+use grin_p2p::types::PeerInfoDisplay;
+use grin_keychain::{SwitchCommitmentType, ExtKeychainPath, Identifier, Keychain};
+use grin_wallet_libwallet::internal::{updater,keys};
+use grin_wallet_libwallet::{AcctPathMapping, BlockFees, CbData, NodeClient, Slate, TxLogEntry, TxWrapper,
+                            WalletInfo, OutputCommitMapping, WalletInst, WalletLCProvider,
+                            StatusMessage, TxLogEntryType, OutputData};
+use grinswap::Message as Msg;
+
+use crate::contacts::GrinboxAddress;
+use common::crypto::{Hex, SecretKey };
+use common::config::Wallet713Config;
+use contacts::types::Address;
+
+use crate::common::{Arc, Mutex, Error, ErrorKind, hasher};
+use super::swap;
+use super::types::TxProof;
+use crate::broker::MWCMQPublisher;
 
 // struct for sending back node information
 pub struct NodeInfo
@@ -54,7 +54,7 @@ pub fn invoice_tx<'a, L, C, K>(
         L: WalletLCProvider<'a, C, K>,
         C: NodeClient + 'a,
         K: Keychain + 'a,
-{
+    {
         wallet_lock!(wallet_inst, w);
 
         let params = grin_wallet_libwallet::InitTxArgs {
@@ -101,9 +101,9 @@ pub fn invoice_tx<'a, L, C, K>(
         Ok(slate)
     }
 
-    pub fn show_rootpublickey<'a, L, C, K>(
-        wallet_inst: Arc<Mutex<Box<dyn WalletInst<'a, L, C, K>>>>,
-        message: Option<&str>
+pub fn show_rootpublickey<'a, L, C, K>(
+    wallet_inst: Arc<Mutex<Box<dyn WalletInst<'a, L, C, K>>>>,
+    message: Option<&str>
     )  -> Result<(), Error>
     where
             L: WalletLCProvider<'a, C, K>,
@@ -137,10 +137,10 @@ pub fn invoice_tx<'a, L, C, K>(
         Ok(())
     }
 
-    pub fn verifysignature(
-                message: &str,
-                signature: &str,
-                pubkey: &str
+pub fn verifysignature(
+    message: &str,
+    signature: &str,
+    pubkey: &str
     ) -> Result<(), Error> {
         let msg = Hash::from_vec(message.as_bytes());
         let msg = Message::from_slice(msg.as_bytes())?;
@@ -157,6 +157,52 @@ pub fn invoice_tx<'a, L, C, K>(
             Err(_) => println!("WARNING: Message, signature and public key are INVALID!"),
         }
         Ok(())
+    }
+
+pub fn process_swap_message<'a, L, C, K>(
+    wallet_inst: Arc<Mutex<Box<dyn WalletInst<'a, L, C, K>>>>,
+    from: &dyn Address,
+    message: &mut Msg,
+    config: Option<Wallet713Config>
+) -> Result<(), Error>
+ where
+     L: WalletLCProvider<'a, C, K>,
+     C: NodeClient + 'a,
+     K: grinswap::Keychain
+     {
+         wallet_lock!(wallet_inst, w);
+         swap::SwapProcessor::process_swap_message(&mut **w,
+                                                      from, message, config)?;
+
+         Ok(())
+    }
+
+pub fn swap<'a, L, C, K>(
+    wallet_inst: Arc<Mutex<Box<dyn WalletInst<'a, L, C, K>>>>,
+    pair: &str,
+    is_make: bool,
+    is_buy: bool,
+    rate: f64,
+    qty: u64,
+    address: Option<&str>,
+    publisher: &mut MWCMQPublisher,
+    btc_redeem: Option<&str>,
+    ) -> Result<(), Error>
+    where
+        L: WalletLCProvider<'a, C, K>,
+        C: NodeClient + 'a,
+        K: Keychain + 'a,
+    {
+        wallet_lock!(wallet_inst, w);
+        Ok(swap::SwapProcessor::swap(&mut **w,
+                  pair,
+                  is_make,
+                  is_buy,
+                  rate,
+                  qty,
+                  address,
+                  publisher,
+                  btc_redeem)?)
     }
 
     pub fn getnextkey<'a, L, C, K>(
@@ -1119,7 +1165,7 @@ pub fn invoice_tx<'a, L, C, K>(
     > {
         let secp = &Secp256k1::with_caps(ContextFlag::Commit);
 
-        let (destination, slate) = tx_proof
+        let (destination, slate, _) = tx_proof
             .verify_extract(None)
             .map_err(|_| ErrorKind::VerifyProof)?;
 

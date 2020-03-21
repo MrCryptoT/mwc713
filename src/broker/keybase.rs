@@ -8,6 +8,7 @@ use serde::Serialize;
 use serde_json::{json, Value};
 
 use grin_wallet_libwallet::Slate;
+use grinswap::Message;
 use super::types::{CloseReason, Publisher, Subscriber, SubscriptionHandler};
 use common::{Arc, Mutex, Error, ErrorKind};
 use contacts::{Address, KeybaseAddress};
@@ -64,6 +65,10 @@ impl Publisher for KeybasePublisher {
         KeybaseBroker::send(&slate, &to.stripped(), topic, ttl, self.keybase_binary.clone())?;
 
         Ok(())
+    }
+
+    fn post_take(&self, message: &Message, to: &str) -> Result<(), Error> {
+        unimplemented!()
     }
 }
 

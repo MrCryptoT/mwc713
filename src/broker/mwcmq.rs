@@ -5,8 +5,6 @@ use ws::{
     Error as WsError, ErrorKind as WsErrorKind,
 };
 
-
-
 use colored::Colorize;
 use common::crypto::sign_challenge;
 use common::crypto::Hex;
@@ -14,6 +12,7 @@ use regex::Regex;
 use std::{thread, time};
 use crate::wallet::types::TxProof;
 use grin_wallet_libwallet::Slate;
+use grinswap::Message;
 use std::time::Duration;
 use std::io::Read;
 use std::collections::HashMap;
@@ -45,7 +44,7 @@ impl MWCMQPublisher {
         Ok(Self {
             address: address.clone(),
             broker: MWCMQSBroker::new(config.clone())?,
-            secret_key: secret_key.clone(),
+            secret_key: (*secret_key).clone(),
             config: config.clone(),
         })
     }
@@ -55,6 +54,14 @@ impl Publisher for MWCMQPublisher {
     fn post_slate(&self, slate: &Slate, to: &dyn Address) -> Result<(), Error> {
         let to = MWCMQSAddress::from_str(&to.to_string())?;
         self.broker.post_slate(slate, &to, &self.address, &self.secret_key)?;
+        Ok(())
+    }
+    fn post_take(&self, message: &Message, to: &str) -> Result<(), Error> {
+        let to_address = MWCMQSAddress::from_str(to)?;
+        self.broker.post_take(message,
+                              &to_address,
+                              &self.address,
+                              &self.secret_key)?;
         Ok(())
     }
 }
@@ -133,7 +140,6 @@ impl MWCMQSBroker {
         from: &MWCMQSAddress,
         secret_key: &SecretKey,
     ) -> Result<(), Error> {
-
         if !self.is_running() {
             return Err(ErrorKind::ClosedListener("mwcmqs".to_string()).into());
         }
@@ -143,19 +149,28 @@ impl MWCMQSBroker {
         let skey = secret_key.clone();
 
         let to_str = str::replace(&format!("{:?}@{}:{}",
-                     &to.public_key,
-                     domain,
-                     port.unwrap_or(DEFAULT_MWCMQS_PORT)), "\"", "");
+                                           &to.public_key,
+                                           domain,
+                                           port.unwrap_or(DEFAULT_MWCMQS_PORT)), "\"", "");
         let message = EncryptedMessage::new(
             serde_json::to_string(&slate)?,
             &GrinboxAddress::from_str(&to_str)?,
             &pkey,
             &skey,
-        )
-            .map_err(|_| {
-                WsError::new(WsErrorKind::Protocol, "could not encrypt slate!")
-            })?;
+        ).map_err(|_| {
+            WsError::new(WsErrorKind::Protocol, "could not encrypt slate!")
+        })?;
 
+        self.post_generic(message, to, from, secret_key);
+        Ok(())
+    }
+
+    fn post_generic(&self,
+                    message: EncryptedMessage,
+                    to: &MWCMQSAddress,
+                    from: &MWCMQSAddress,
+                    secret_key: &SecretKey,
+    ) -> Result<(), Error> {
         let message_ser = &serde_json::to_string(&message)?;
         let mut challenge = String::new();
         challenge.push_str(&message_ser);
@@ -214,6 +229,37 @@ impl MWCMQSBroker {
                 }
             }
         }
+
+        Ok(())
+    }
+
+    fn post_take(&self,
+                 message: &Message,
+                 to: &MWCMQSAddress,
+                 from: &MWCMQSAddress,
+                 secret_key: &SecretKey) -> Result<(), Error> {
+        if !self.is_running() {
+            return Err(ErrorKind::ClosedListener("mwcmqs".to_string()).into());
+        }
+        let pkey = to.public_key()?;
+        let domain = &to.domain;
+        let port = to.port;
+        let skey = secret_key.clone();
+
+        let to_str = str::replace(&format!("{:?}@{}:{}",
+                                           &to.public_key,
+                                           domain,
+                                           port.unwrap_or(DEFAULT_MWCMQS_PORT)), "\"", "");
+        let message = EncryptedMessage::new(
+            serde_json::to_string(&message)?,
+            &GrinboxAddress::from_str(&to_str)?,
+            &pkey,
+            &skey,
+        ).map_err(|_| {
+            WsError::new(WsErrorKind::Protocol, "could not encrypt slate!")
+        })?;
+
+        self.post_generic(message, to, from, secret_key);
 
         Ok(())
     }
@@ -647,7 +693,7 @@ impl MWCMQSBroker {
                                 } else {
                                     delcount = delcount + 1;
                                 }
-                                let (mut slate, mut tx_proof) = match TxProof::from_response(
+                                let (mut slate, mut tx_proof, mut message) = match TxProof::from_response(
                                         from.clone(),
                                         r5.clone(),
                                         "".to_string(),
@@ -673,11 +719,20 @@ impl MWCMQSBroker {
                                     from.unwrap()
                                 };
 
-                                handler.lock().on_slate(
-                                    &from,
-                                    &mut slate,
-                                    Some(&mut tx_proof),
-                                    Some(self.config.clone()));
+                                if message.is_none() {
+                                    handler.lock().on_slate(
+                                        &from,
+                                        &mut slate,
+                                        Some(&mut tx_proof),
+                                        Some(self.config.clone()));
+                                } else {
+                                    println!("got a message: {:?}", serde_json::to_string(&message));
+                                    let mut message = message.unwrap();
+                                    handler.lock().on_message(
+                                        &from,
+                                        &mut message,
+                                        Some(self.config.clone()));
+                                }
                                 break;
                             }
                         }

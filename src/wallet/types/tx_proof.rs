@@ -1,6 +1,7 @@
 use grin_util::secp::key::SecretKey;
 use grin_util::secp::pedersen::Commitment;
 use grin_util::secp::Signature;
+use grinswap::swap::message::Message;
 
 use crate::common::crypto::verify_signature;
 use crate::common::crypto::Hex;
@@ -13,6 +14,7 @@ use std::path::Path;
 use std::fs::File;
 use std::io::{Read, Write};
 use common::ErrorKind;
+use bitcoin::bech32::decode;
 
 pub const TX_PROOF_SAVE_DIR: &'static str = "saved_proofs";
 
@@ -30,10 +32,17 @@ pub struct TxProof {
 }
 
 impl TxProof {
+    pub fn get_message(&self, decrypted_message: &str) -> Result<Message, serde_json::Error> {
+        println!("get message");
+        let message: Message = serde_json::from_str(&decrypted_message)?;
+        println!("get message success");
+        Ok(message)
+    }
+
     pub fn verify_extract(
         &self,
         expected_destination: Option<&GrinboxAddress>,
-    ) -> Result<(Option<GrinboxAddress>, Slate), ErrorKind> {
+    ) -> Result<(Option<GrinboxAddress>, Slate, Option<Message>), ErrorKind> {
         let mut challenge = String::new();
         challenge.push_str(self.message.as_str());
         challenge.push_str(self.challenge.as_str());
@@ -63,10 +72,35 @@ impl TxProof {
             .decrypt_with_key(&self.key)
             .map_err(|_| ErrorKind::TxProofDecryptMessage)?;
 
+
+
         let slate = Slate::deserialize_upgrade(&decrypted_message)
             .map_err(|_| ErrorKind::TxProofParseSlate)?;
 
-        Ok((destination, slate))
+        /*let message = self.get_message(&decrypted_message);
+        match message {
+            Ok(message) => {
+                Ok((destination, slate, Some(message)));
+            }
+            Err(e) => {
+                Ok((destination, slate, None));
+            }
+        }*/
+
+        let message = self.get_message(&decrypted_message);
+        match message {
+            Ok(message) => {
+                Ok((destination, slate, Some(message)))
+            }
+            Err(e) => {
+                cli_message!("unable to verify proof: {}",e);
+                println!("parsing slate = {}", decrypted_message);
+                //let slate = Slate::deserialize_upgrade(&decrypted_message)
+                 //   .map_err(|_| ErrorKind::ParseSlate)?;
+                Ok((destination, slate, None))
+            }
+        }
+
     }
 
     pub fn from_response(
@@ -76,7 +110,7 @@ impl TxProof {
         signature: String,
         secret_key: &SecretKey,
         expected_destination: Option<&GrinboxAddress>,
-    ) -> Result<(Slate, TxProof), ErrorKind> {
+    ) -> Result<(Slate, TxProof, Option<Message>), ErrorKind> {
         let address =
             GrinboxAddress::from_str(from.as_str()).map_err(|_| ErrorKind::TxProofParseAddress(from) )?;
         let signature =
@@ -102,9 +136,9 @@ impl TxProof {
             outputs: vec![],
         };
 
-        let (_, slate) = proof.verify_extract(expected_destination)?;
+        let (_, slate, message) = proof.verify_extract(expected_destination)?;
 
-        Ok((slate, proof))
+        Ok((slate, proof, message))
     }
 
     // Here is a backend layer. Putting it here because mwc713 is using mwc-wallet backend.

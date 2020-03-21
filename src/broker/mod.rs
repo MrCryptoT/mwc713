@@ -1,8 +1,9 @@
+pub mod types;
+
 mod grinbox;
 mod keybase;
 pub mod mwcmq;
 mod protocol;
-mod types;
 
 pub use self::grinbox::{GrinboxPublisher, GrinboxSubscriber};
 pub use self::mwcmq::{MWCMQPublisher, MWCMQSubscriber};
