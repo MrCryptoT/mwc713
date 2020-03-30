@@ -14,7 +14,6 @@ use std::path::Path;
 use std::fs::File;
 use std::io::{Read, Write};
 use common::ErrorKind;
-use bitcoin::bech32::decode;
 
 pub const TX_PROOF_SAVE_DIR: &'static str = "saved_proofs";
 
@@ -77,16 +76,6 @@ impl TxProof {
         let slate = Slate::deserialize_upgrade(&decrypted_message)
             .map_err(|_| ErrorKind::TxProofParseSlate)?;
 
-        /*let message = self.get_message(&decrypted_message);
-        match message {
-            Ok(message) => {
-                Ok((destination, slate, Some(message)));
-            }
-            Err(e) => {
-                Ok((destination, slate, None));
-            }
-        }*/
-
         let message = self.get_message(&decrypted_message);
         match message {
             Ok(message) => {
@@ -94,13 +83,9 @@ impl TxProof {
             }
             Err(e) => {
                 cli_message!("unable to verify proof: {}",e);
-                println!("parsing slate = {}", decrypted_message);
-                //let slate = Slate::deserialize_upgrade(&decrypted_message)
-                 //   .map_err(|_| ErrorKind::ParseSlate)?;
                 Ok((destination, slate, None))
             }
         }
-
     }
 
     pub fn from_response(

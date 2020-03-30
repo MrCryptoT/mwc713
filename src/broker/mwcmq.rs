@@ -161,7 +161,7 @@ impl MWCMQSBroker {
             WsError::new(WsErrorKind::Protocol, "could not encrypt slate!")
         })?;
 
-        self.post_generic(message, to, from, secret_key);
+        self.post_generic(message, to, from, secret_key)?;
         Ok(())
     }
 
@@ -259,7 +259,7 @@ impl MWCMQSBroker {
             WsError::new(WsErrorKind::Protocol, "could not encrypt slate!")
         })?;
 
-        self.post_generic(message, to, from, secret_key);
+        self.post_generic(message, to, from, secret_key)?;
 
         Ok(())
     }
@@ -693,7 +693,7 @@ impl MWCMQSBroker {
                                 } else {
                                     delcount = delcount + 1;
                                 }
-                                let (mut slate, mut tx_proof, mut message) = match TxProof::from_response(
+                                let (mut slate, mut tx_proof, message) = match TxProof::from_response(
                                         from.clone(),
                                         r5.clone(),
                                         "".to_string(),

@@ -69,14 +69,14 @@ use grin_util::from_hex;
 use grin_util::ZeroingString;
 
 use grinswap::Message;
-use grinswap::swap::BtcSellerContext;
-use crate::bitcoin::util::key::PublicKey as BtcPublicKey;
-use bitcoin::network::constants::Network as BtcNetwork;
-use grinswap::swap::types::{
-    RoleContext,
-    SellerContext,
-    SecondarySellerContext
-};
+//use grinswap::swap::BtcSellerContext;
+//use crate::bitcoin::util::key::PublicKey as BtcPublicKey;
+//use bitcoin::network::constants::Network as BtcNetwork;
+//use grinswap::swap::types::{
+//    RoleContext,
+//    SellerContext,
+//    SecondarySellerContext
+//};
 
 use clap::{App, Arg, ArgMatches, SubCommand};
 use colored::*;
@@ -414,9 +414,14 @@ impl SubscriptionHandler for Controller {
         }
     }
 
-    fn on_message(&self, from: &dyn Address, message: &mut Message, config: Option<Wallet713Config>) {
+    fn on_message(&mut self, from: &dyn Address, message: &mut Message, config: Option<Wallet713Config>) {
         println!("received a message");
-        self.wallet.lock().process_message(from, message, config);
+        let mut publ = self.publisher.as_mut();
+        let result = self.wallet.lock().process_message(from, message, config);
+        match result {
+            Ok(()) => {}
+            Err(e) => cli_message!("Error: {}", e),
+        }
     }
 
     fn on_close(&self, reason: CloseReason) {
@@ -1701,7 +1706,7 @@ fn do_command(
                 let qty = core::amount_from_hr_string(qty)
                     .map_err(|_| ErrorKind::InvalidAmount(qty.to_string()))?;
                 let stripped_address: &str;
-                let mut stripped: String;
+                let stripped: String;
 
                 let address = if is_make {
                     None

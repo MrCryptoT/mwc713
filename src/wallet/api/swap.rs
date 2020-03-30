@@ -4,18 +4,18 @@ use parking_lot::{ Mutex };
 use failure::Error;
 use blake2_rfc::blake2b::blake2b;
 
-use broker::types::{ ContextHolderType, Publisher };
+use broker::types::{ ContextHolderType };
 use broker::MWCMQPublisher;
 use common::config::Wallet713Config;
 
 use grinswap::{ Context, Swap };
 use grinswap::swap::types::{ RoleContext, SecondarySellerContext, SellerContext, BtcSellerContext };
-use grinswap::swap::message::{ Message, Update };
+use grinswap::swap::message::{ Message };
 use grin_core::core::{ Transaction, TxKernel };
 use grin_p2p::types::PeerInfoDisplay;
 use grin_util::secp::pedersen::{ Commitment, RangeProof };
 use grin_util::secp::key::SecretKey;
-use grin_wallet_libwallet::{ NodeClient, HeaderInfo, WalletBackend, ErrorKind };
+use grin_wallet_libwallet::{ NodeClient, HeaderInfo, WalletBackend };
 use grin_keychain::{ExtKeychain, Keychain, Identifier, SwitchCommitmentType };
 
 const GRIN_UNIT: u64 = 1_000_000_000;

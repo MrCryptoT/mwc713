@@ -36,7 +36,7 @@ impl GrinboxPublisher {
         Ok(Self {
             address: address.clone(),
             broker: GrinboxBroker::new(protocol_unsecure)?,
-            secret_key: secret_key.clone(),
+            secret_key: (*secret_key).clone(),
             config: config.clone(),
         })
     }
@@ -49,7 +49,7 @@ impl Publisher for GrinboxPublisher {
         Ok(())
     }
 
-    fn post_take(&self, message: &grinswap::Message, to: &str) -> Result<(), Error> {
+    fn post_take(&self, _message: &grinswap::Message, _to: &str) -> Result<(), Error> {
         unimplemented!()
     }
 }
